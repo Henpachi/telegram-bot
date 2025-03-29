@@ -14,6 +14,7 @@ GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
 WHATSAPP_GROUP_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
 YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
+ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
 # Supabase Database Connection
 DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
@@ -108,7 +109,7 @@ async def send_referral(event: CallbackQuery):
 # Handle /leaderboard Command
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.from_user.username != YOUR_TELEGRAM_USERNAME:
+    if message.from_user.id not in ADMIN_CHAT_IDS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
