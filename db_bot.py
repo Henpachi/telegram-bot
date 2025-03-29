@@ -11,6 +11,7 @@ from aiogram.filters import Command
 # Bot credentials
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
+WHATSAPP_GROUP_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
 YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
 
@@ -77,7 +78,8 @@ async def handle_start(message: Message):
 
     buttons = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
-        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)]
+        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
+        [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
     ])
 
     await message.answer("📢 Welcome! Use the buttons below:", reply_markup=buttons)
@@ -92,7 +94,8 @@ async def send_referral(event: CallbackQuery):
 
     buttons = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
-        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)]
+        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
+        [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
     ])
 
     text = (f"🔗 Here is your referral link: {referral_link}\n"
@@ -101,6 +104,27 @@ async def send_referral(event: CallbackQuery):
 
     await event.answer()
     await event.message.edit_text(text, reply_markup=buttons)
+
+# Handle /leaderboard Command
+@dp.message(Command("leaderboard"))
+async def handle_leaderboard(message: Message):
+    if message.from_user.username != YOUR_TELEGRAM_USERNAME:
+        await message.answer("❌ You are not authorized to view the leaderboard.")
+        return
+
+    db = await connect_db()
+    if not db:
+        await message.answer("❌ Database error! Please try again later.")
+        return
+
+    top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
+    await db.close()
+
+    leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
+    for i, row in enumerate(top_users, start=1):
+        leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
+
+    await message.answer(leaderboard_text, parse_mode="Markdown")
 
 # Start the bot
 async def main():
