@@ -41,8 +41,8 @@ def generate_referral_code():
 
 # Escape MarkdownV2 Special Characters
 def escape_markdown(text):
-    special_chars = r'_*[]()~`>#+-=|{}.!'
-    return re.sub(r'([\\' + re.escape(special_chars) + r'])', r'\\\\\1', text)
+    special_chars = "_`*[]()~>#+-=|{}.!"
+    return ''.join(f'\\{char}' if char in special_chars else char for char in text)
 
 # Register User
 async def register_user(telegram_id, username):
@@ -135,7 +135,7 @@ async def handle_leaderboard(event: CallbackQuery):
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, row in enumerate(top_users, start=1):
         username = escape_markdown(row['username'])
-        leaderboard_text += f"{i}. {username}: {row['referrals']} referrals\n"
+        leaderboard_text += f"{i}\. {username}: {row['referrals']} referrals\n"
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
