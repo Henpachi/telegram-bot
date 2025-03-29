@@ -13,6 +13,7 @@ import threading
 # ✅ Bot credentials (for educational use only)
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
+WHATSAPP_CHANNEL_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
 YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
 
@@ -48,17 +49,13 @@ async def register_user(telegram_id, username):
         return None
 
     try:
-        # Check if user exists
-        result = await db.fetchrow(
-            "SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
+        result = await db.fetchrow("SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
         if result:
             return result["referral_code"]
 
-        # Insert new user
         referral_code = generate_referral_code()
-        await db.execute(
-            "INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
-            telegram_id, username, referral_code, 0)
+        await db.execute("INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
+                         telegram_id, username, referral_code, 0)
 
         return referral_code
     except Exception as e:
@@ -84,21 +81,23 @@ async def handle_start(message: Message):
     if db:
         if len(parts) > 1:  # If referred
             referrer_code = parts[1]
-            referrer = await db.fetchrow(
-                "SELECT telegram_id FROM users WHERE referral_code = $1", referrer_code)
+            referrer = await db.fetchrow("SELECT telegram_id FROM users WHERE referral_code = $1", referrer_code)
 
             if referrer and referrer["telegram_id"] != telegram_id:
-                await db.execute(
-                    "UPDATE users SET referrals = referrals + 1 WHERE telegram_id = $1",
-                    referrer["telegram_id"])
+                await db.execute("UPDATE users SET referrals = referrals + 1 WHERE telegram_id = $1",
+                                 referrer["telegram_id"])
                 await message.answer("✅ You joined using a referral link!")
 
         await db.close()
 
     # Buttons
     buttons = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
-                         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)]])
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
+            [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
+            [InlineKeyboardButton(text="Join Our WhatsApp Channel ✅", url=WHATSAPP_CHANNEL_LINK)]
+        ]
+    )
 
     await message.answer("📢 Welcome! Use the buttons below:", reply_markup=buttons)
 
@@ -118,8 +117,12 @@ async def send_referral(event: CallbackQuery):
     referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
 
     buttons = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
-                         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)]])
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
+            [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
+            [InlineKeyboardButton(text="Join Our WhatsApp Channel ✅", url=WHATSAPP_CHANNEL_LINK)]
+        ]
+    )
 
     text = f"🔗 Your referral link: {referral_link}\n🎉 Invite friends and earn rewards!\n\n📢 Join our group: {GROUP_INVITE_LINK}"
 
@@ -140,8 +143,7 @@ async def handle_leaderboard(message: Message):
         return
 
     try:
-        top_users = await db.fetch(
-            "SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
+        top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
 
         for i, row in enumerate(top_users, start=1):
@@ -161,8 +163,7 @@ async def send_leaderboard():
         return
 
     try:
-        top_users = await db.fetch(
-            "SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
+        top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
 
         for i, row in enumerate(top_users, start=1):
