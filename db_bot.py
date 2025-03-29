@@ -1,4 +1,4 @@
-import logging 
+import logging
 import asyncpg
 import random
 import string
@@ -11,14 +11,14 @@ from flask import Flask
 import threading
 
 # ✅ Bot credentials (for educational use only)
-API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
+API_TOKEN = "YOUR_BOT_API_TOKEN"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
 WHATSAPP_CHANNEL_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
-YOUR_TELEGRAM_USERNAME = "LorettaGifts"
+AUTHORIZED_USERS = {6315241288, 6375943693}  # List of users allowed to check leaderboard
 BOT_USERNAME = "Loretta_Referrals_bot"
 
 # ✅ Database Connection
-DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
+DATABASE_URL = "YOUR_DATABASE_URL"
 
 # ✅ Initialize bot and dispatcher
 session = AiohttpSession()
@@ -35,38 +35,10 @@ async def connect_db():
         print(f"❌ Database Error: {e}")
         return None
 
-# ✅ Generate Referral Code
-def generate_referral_code():
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-
-# ✅ Register User
-async def register_user(telegram_id, username):
-    db = await connect_db()
-    if not db:
-        return None
-
-    try:
-        result = await db.fetchrow("SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
-        if result:
-            return result["referral_code"]
-
-        referral_code = generate_referral_code()
-        await db.execute("INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
-                         telegram_id, username, referral_code, 0)
-
-        return referral_code
-    except Exception as e:
-        print(f"❌ Error registering user: {e}")
-        return None
-    finally:
-        await db.close()
-
 # ✅ Handle /leaderboard Command
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    allowed_users = {YOUR_TELEGRAM_USERNAME, "6375943693"}  # Allowed usernames or chat IDs
-
-    if str(message.from_user.id) not in allowed_users and message.from_user.username not in allowed_users:
+    if message.from_user.id not in AUTHORIZED_USERS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -85,6 +57,7 @@ async def handle_leaderboard(message: Message):
         await message.answer(leaderboard_text, parse_mode="Markdown")
     except Exception as e:
         print(f"❌ Error fetching leaderboard: {e}")
+        await message.answer("❌ Failed to fetch leaderboard data.")
     finally:
         await db.close()
 
