@@ -42,7 +42,7 @@ def generate_referral_code():
 # Escape MarkdownV2 Special Characters
 def escape_markdown(text):
     special_chars = r'_*[]()~`>#+-=|{}.!'
-    return re.sub(r'([\\' + re.escape(special_chars) + r'])', r'\\\1', text)
+    return re.sub(r'([\\' + re.escape(special_chars) + r'])', r'\\\\\1', text)
 
 # Register User
 async def register_user(telegram_id, username):
@@ -83,13 +83,18 @@ async def handle_start(message: Message):
 
     await db.close()
 
-    buttons = InlineKeyboardMarkup(inline_keyboard=[
+    buttons = [
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
-    ])
+    ]
 
-    await message.answer("📢 Welcome! Use the buttons below:", reply_markup=buttons)
+    if telegram_id in ADMIN_CHAT_IDS:
+        buttons.append([InlineKeyboardButton(text="View Leaderboard 🏆", callback_data="leaderboard")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await message.answer("📢 Welcome! Use the buttons below:", reply_markup=keyboard)
 
 # Handle Referral Button Click
 @dp.callback_query(F.data == "referral")
@@ -113,15 +118,15 @@ async def send_referral(event: CallbackQuery):
     await event.message.edit_text(text, reply_markup=buttons)
 
 # Handle /leaderboard Command
-@dp.message(Command("leaderboard"))
-async def handle_leaderboard(message: Message):
-    if message.from_user.id not in ADMIN_CHAT_IDS:
-        await message.answer("❌ You are not authorized to view the leaderboard.")
+@dp.callback_query(F.data == "leaderboard")
+async def handle_leaderboard(event: CallbackQuery):
+    if event.from_user.id not in ADMIN_CHAT_IDS:
+        await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
 
     db = await connect_db()
     if not db:
-        await message.answer("❌ Database error! Please try again later.")
+        await event.answer("❌ Database error! Please try again later.", show_alert=True)
         return
 
     top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
@@ -132,7 +137,7 @@ async def handle_leaderboard(message: Message):
         username = escape_markdown(row['username'])
         leaderboard_text += f"{i}. {username}: {row['referrals']} referrals\n"
 
-    await message.answer(leaderboard_text, parse_mode="MarkdownV2")
+    await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
 # Start the bot
 async def main():
