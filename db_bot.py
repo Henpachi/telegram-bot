@@ -39,9 +39,10 @@ async def connect_db():
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
-# Escape Markdown Special Characters
+# Escape MarkdownV2 Special Characters
 def escape_markdown(text):
-    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+    special_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(r'([\\' + re.escape(special_chars) + r'])', r'\\\1', text)
 
 # Register User
 async def register_user(telegram_id, username):
