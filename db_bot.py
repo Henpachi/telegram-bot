@@ -3,6 +3,7 @@ import asyncpg
 import random
 import string
 import asyncio
+import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -37,6 +38,10 @@ async def connect_db():
 # Generate a Referral Code
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+
+# Escape Markdown Special Characters
+def escape_markdown(text):
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 # Register User
 async def register_user(telegram_id, username):
@@ -123,9 +128,10 @@ async def handle_leaderboard(message: Message):
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, row in enumerate(top_users, start=1):
-        leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
+        username = escape_markdown(row['username'])
+        leaderboard_text += f"{i}. {username}: {row['referrals']} referrals\n"
 
-    await message.answer(leaderboard_text, parse_mode="Markdown")
+    await message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
 # Start the bot
 async def main():
