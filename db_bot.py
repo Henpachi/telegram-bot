@@ -3,8 +3,9 @@ import asyncpg
 import random
 import string
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
 from flask import Flask
 import threading
@@ -20,12 +21,11 @@ BOT_USERNAME = "Loretta_Referrals_bot"
 DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
 
 # ✅ Initialize bot and dispatcher
-bot = Bot(token=API_TOKEN)
+session = AiohttpSession()
+bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# ✅ Admins who can view the leaderboard
-ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin ID
-
+ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin chat ID
 
 async def connect_db():
     try:
@@ -34,10 +34,8 @@ async def connect_db():
         print(f"❌ Database Error: {e}")
         return None
 
-
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-
 
 async def register_user(telegram_id, username):
     db = await connect_db()
@@ -53,7 +51,6 @@ async def register_user(telegram_id, username):
         return referral_code
     finally:
         await db.close()
-
 
 @dp.message(Command("start"))
 async def handle_start(message: Message):
@@ -77,18 +74,18 @@ async def handle_start(message: Message):
         await db.close()
 
     referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
-
+    referral_text = f"🎉 Invite friends and earn rewards!\n\nShare your referral link: {referral_link}"
+    
     buttons = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Refer a Friend ✅", url=referral_link)],
+        [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our WhatsApp Channel ✅", url=WHATSAPP_CHANNEL_LINK)]
     ])
-    await message.answer("📢 Welcome! Use the buttons below:", reply_markup=buttons)
-
+    await message.answer(referral_text, reply_markup=buttons)
 
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.chat.id not in ADMIN_CHAT_IDS:
+    if message.from_user.id not in ADMIN_CHAT_IDS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -106,7 +103,6 @@ async def handle_leaderboard(message: Message):
     finally:
         await db.close()
 
-
 async def send_leaderboard_message():
     db = await connect_db()
     if not db:
@@ -116,46 +112,37 @@ async def send_leaderboard_message():
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
         for i, row in enumerate(top_users, start=1):
             leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
-        
         for admin_id in ADMIN_CHAT_IDS:
             await bot.send_message(chat_id=admin_id, text=leaderboard_text, parse_mode="Markdown")
     finally:
         await db.close()
-
 
 async def leaderboard_scheduler():
     while True:
         await send_leaderboard_message()
         await asyncio.sleep(86400)
 
-
 async def main():
     print("🤖 Bot is running...")
-    
-    # Disable webhook before starting polling
     await bot.delete_webhook(drop_pending_updates=True)
-    
     asyncio.create_task(leaderboard_scheduler())
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await dp.start_polling(bot)
     finally:
         await bot.session.close()
 
-
 app = Flask(__name__)
-
 
 @app.route('/')
 def home():
     return "Bot is running!"
 
-
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
-
 
 threading.Thread(target=run_flask, daemon=True).start()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
+
