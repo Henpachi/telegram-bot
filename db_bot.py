@@ -11,19 +11,22 @@ from flask import Flask
 import threading
 
 # ✅ Bot credentials (for educational use only)
-API_TOKEN = "YOUR_BOT_API_TOKEN"
+API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
 WHATSAPP_CHANNEL_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
-AUTHORIZED_USERS = {6315241288, 6375943693}  # List of users allowed to check leaderboard
 BOT_USERNAME = "Loretta_Referrals_bot"
 
+# ✅ Allowed Admins for /leaderboard
+ADMIN_IDS = {6315241288, 6375943693}  # Allowed Telegram IDs
+
 # ✅ Database Connection
-DATABASE_URL = "YOUR_DATABASE_URL"
+DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
 
 # ✅ Initialize bot and dispatcher
 session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
+
 
 # ✅ Connect to PostgreSQL
 async def connect_db():
@@ -35,10 +38,14 @@ async def connect_db():
         print(f"❌ Database Error: {e}")
         return None
 
+
 # ✅ Handle /leaderboard Command
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.from_user.id not in AUTHORIZED_USERS:
+    telegram_id = message.from_user.id
+
+    # Check if the user is authorized
+    if telegram_id not in ADMIN_IDS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -49,15 +56,19 @@ async def handle_leaderboard(message: Message):
 
     try:
         top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
-        leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
+        
+        if not top_users:
+            leaderboard_text = "🏆 No referrals yet!"
+        else:
+            leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n"
+            for i, row in enumerate(top_users, start=1):
+                leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
 
-        for i, row in enumerate(top_users, start=1):
-            leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
-
+        print("✅ Sending leaderboard...")
         await message.answer(leaderboard_text, parse_mode="Markdown")
     except Exception as e:
         print(f"❌ Error fetching leaderboard: {e}")
-        await message.answer("❌ Failed to fetch leaderboard data.")
+        await message.answer("❌ Failed to fetch leaderboard.")
     finally:
         await db.close()
 
@@ -68,19 +79,6 @@ async def main():
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
-
-# ✅ Flask for uptime
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-# Start Flask in a separate thread
-threading.Thread(target=run_flask, daemon=True).start()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
