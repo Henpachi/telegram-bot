@@ -13,7 +13,6 @@ import threading
 # ✅ Bot credentials (DO NOT CHANGE API OR DATABASE URL)
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
-WHATSAPP_CHANNEL_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
 YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
 
@@ -24,8 +23,6 @@ DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.p
 session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
-
-ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin chat ID
 
 async def connect_db():
     try:
@@ -73,19 +70,29 @@ async def handle_start(message: Message):
             await message.answer("✅ You joined using a referral link!")
         await db.close()
 
-    referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
-    referral_text = f"🎉 Invite friends and earn rewards!\n\nShare your referral link: {referral_link}"
-    
     buttons = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
-        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
-        [InlineKeyboardButton(text="Join Our WhatsApp Channel ✅", url=WHATSAPP_CHANNEL_LINK)]
+        [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)]
     ])
-    await message.answer(referral_text, reply_markup=buttons)
+    await message.answer("📢 Welcome! Use the buttons below:", reply_markup=buttons)
+
+@dp.callback_query(F.data == "referral")
+async def send_referral(event: CallbackQuery):
+    telegram_id = event.from_user.id
+    username = event.from_user.username or "Unknown"
+    referral_code = await register_user(telegram_id, username)
+    referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
+
+    text = (f"🔗 Here is your referral link: {referral_link}\n"
+            f"🎉 Invite friends and earn rewards!\n\n"
+            f"📢 Join our group: {GROUP_INVITE_LINK}")
+
+    await event.answer()
+    await event.message.edit_text(text)
 
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.from_user.id not in ADMIN_CHAT_IDS:
+    if message.from_user.id not in [YOUR_TELEGRAM_USERNAME, 6375943693]:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -112,8 +119,8 @@ async def send_leaderboard_message():
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
         for i, row in enumerate(top_users, start=1):
             leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
-        for admin_id in ADMIN_CHAT_IDS:
-            await bot.send_message(chat_id=admin_id, text=leaderboard_text, parse_mode="Markdown")
+        ADMIN_CHAT_ID = 6315241288
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=leaderboard_text, parse_mode="Markdown")
     finally:
         await db.close()
 
@@ -145,4 +152,3 @@ threading.Thread(target=run_flask, daemon=True).start()
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
-
