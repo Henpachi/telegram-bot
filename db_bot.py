@@ -3,9 +3,8 @@ import asyncpg
 import random
 import string
 import asyncio
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from flask import Flask
 import threading
@@ -21,11 +20,12 @@ BOT_USERNAME = "Loretta_Referrals_bot"
 DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
 
 # ✅ Initialize bot and dispatcher
-session = AiohttpSession()
-bot = Bot(token=API_TOKEN, session=session)
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin chat ID
+# ✅ Admins who can view the leaderboard
+ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin ID
+
 
 async def connect_db():
     try:
@@ -76,8 +76,10 @@ async def handle_start(message: Message):
             await message.answer("✅ You joined using a referral link!")
         await db.close()
 
+    referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
+
     buttons = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
+        [InlineKeyboardButton(text="Refer a Friend ✅", url=referral_link)],
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our WhatsApp Channel ✅", url=WHATSAPP_CHANNEL_LINK)]
     ])
@@ -86,7 +88,7 @@ async def handle_start(message: Message):
 
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.from_user.id not in ADMIN_CHAT_IDS:
+    if message.chat.id not in ADMIN_CHAT_IDS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -114,6 +116,7 @@ async def send_leaderboard_message():
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
         for i, row in enumerate(top_users, start=1):
             leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
+        
         for admin_id in ADMIN_CHAT_IDS:
             await bot.send_message(chat_id=admin_id, text=leaderboard_text, parse_mode="Markdown")
     finally:
@@ -128,10 +131,13 @@ async def leaderboard_scheduler():
 
 async def main():
     print("🤖 Bot is running...")
+    
+    # Disable webhook before starting polling
     await bot.delete_webhook(drop_pending_updates=True)
+    
     asyncio.create_task(leaderboard_scheduler())
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await bot.session.close()
 
