@@ -25,6 +25,7 @@ session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
+ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Added new admin chat ID
 
 async def connect_db():
     try:
@@ -85,7 +86,7 @@ async def handle_start(message: Message):
 
 @dp.message(Command("leaderboard"))
 async def handle_leaderboard(message: Message):
-    if message.from_user.username != YOUR_TELEGRAM_USERNAME:
+    if message.from_user.id not in ADMIN_CHAT_IDS:
         await message.answer("❌ You are not authorized to view the leaderboard.")
         return
 
@@ -113,8 +114,8 @@ async def send_leaderboard_message():
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
         for i, row in enumerate(top_users, start=1):
             leaderboard_text += f"{i}. {row['username']}: {row['referrals']} referrals\n"
-        ADMIN_CHAT_ID = 6315241288
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=leaderboard_text, parse_mode="Markdown")
+        for admin_id in ADMIN_CHAT_IDS:
+            await bot.send_message(chat_id=admin_id, text=leaderboard_text, parse_mode="Markdown")
     finally:
         await db.close()
 
