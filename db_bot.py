@@ -3,7 +3,6 @@ import asyncpg
 import random
 import string
 import asyncio
-import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -36,11 +35,17 @@ DB_POOL = None
 # Create a connection pool to PostgreSQL
 async def create_db_pool():
     global DB_POOL
-    try:
-        DB_POOL = await create_pool(DATABASE_URL)
-        print("✅ Connected to PostgreSQL with pooling!")
-    except Exception as e:
-        logging.error(f"❌ Error creating DB pool: {e}")
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            DB_POOL = await create_pool(DATABASE_URL, min_size=5, max_size=20)
+            print("✅ Connected to PostgreSQL with pooling!")
+            return
+        except Exception as e:
+            retries += 1
+            logging.error(f"❌ Error creating DB pool: {e}. Retrying {retries}/{MAX_RETRIES}...")
+            await asyncio.sleep(RETRY_DELAY)
+    logging.critical("❌ Failed to connect to PostgreSQL after multiple retries.")
 
 # Get a connection from the pool
 async def get_db_connection():
