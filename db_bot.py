@@ -1,4 +1,4 @@
-import logging 
+import logging
 import asyncpg
 import random
 import string
@@ -25,15 +25,25 @@ session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# Connect to PostgreSQL
+# Retry parameters for DB connection
+MAX_RETRIES = 5  # Maximum retry attempts
+RETRY_DELAY = 5  # Delay in seconds before retrying
+
+# Connect to PostgreSQL with retry mechanism
 async def connect_db():
-    try:
-        db = await asyncpg.connect(DATABASE_URL)
-        print("✅ Connected to PostgreSQL!")
-        return db
-    except Exception as e:
-        print(f"❌ Database Error: {e}")
-        return None
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            db = await asyncpg.connect(DATABASE_URL)
+            print("✅ Connected to PostgreSQL!")
+            return db
+        except Exception as e:
+            retries += 1
+            logging.error(f"❌ Database Error: {e}. Retrying {retries}/{MAX_RETRIES}...")
+            await asyncio.sleep(RETRY_DELAY)  # Wait before retrying
+
+    logging.critical(f"❌ Could not connect to the database after {MAX_RETRIES} retries.")
+    return None  # Return None if connection fails after MAX_RETRIES
 
 # Generate a Referral Code
 def generate_referral_code():
@@ -109,7 +119,7 @@ async def send_referral(event: CallbackQuery):
     referral_code = await register_user(telegram_id, username)
     referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
 
-    buttons = InlineKeyboardMarkup(inline_keyboard=[
+    buttons = InlineKeyboardMarkup(inline_keyboard=[ 
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
