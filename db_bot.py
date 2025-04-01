@@ -1,4 +1,4 @@
-import logging
+import logging 
 import asyncpg
 import random
 import string
@@ -50,13 +50,18 @@ async def register_user(telegram_id, username):
     if not db:
         return None
 
+    # Check if the user already exists
     result = await db.fetchrow("SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
     if result:
         await db.close()
-        return result["referral_code"]
+        return result["referral_code"]  # Return existing referral code
 
+    # If user does not exist, create a new record
     referral_code = generate_referral_code()
-    await db.execute("INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)", telegram_id, username, referral_code, 0)
+    await db.execute(
+        "INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
+        telegram_id, username, referral_code, 0
+    )
     await db.close()
     return referral_code
 
