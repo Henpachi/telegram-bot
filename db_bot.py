@@ -8,6 +8,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
+from asyncpg import create_pool
+from flask import Flask
+import threading
 
 # Bot credentials
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
@@ -28,22 +31,26 @@ dp = Dispatcher()
 # Retry parameters for DB connection
 MAX_RETRIES = 5  # Maximum retry attempts
 RETRY_DELAY = 5  # Delay in seconds before retrying
+DB_POOL = None
 
-# Connect to PostgreSQL with retry mechanism
-async def connect_db():
-    retries = 0
-    while retries < MAX_RETRIES:
-        try:
-            db = await asyncpg.connect(DATABASE_URL)
-            print("✅ Connected to PostgreSQL!")
-            return db
-        except Exception as e:
-            retries += 1
-            logging.error(f"❌ Database Error: {e}. Retrying {retries}/{MAX_RETRIES}...")
-            await asyncio.sleep(RETRY_DELAY)  # Wait before retrying
+# Create a connection pool to PostgreSQL
+async def create_db_pool():
+    global DB_POOL
+    try:
+        DB_POOL = await create_pool(DATABASE_URL)
+        print("✅ Connected to PostgreSQL with pooling!")
+    except Exception as e:
+        logging.error(f"❌ Error creating DB pool: {e}")
 
-    logging.critical(f"❌ Could not connect to the database after {MAX_RETRIES} retries.")
-    return None  # Return None if connection fails after MAX_RETRIES
+# Get a connection from the pool
+async def get_db_connection():
+    if not DB_POOL:
+        await create_db_pool()
+    try:
+        return await DB_POOL.acquire()
+    except Exception as e:
+        logging.error(f"❌ Error acquiring DB connection: {e}")
+        return None
 
 # Generate a Referral Code
 def generate_referral_code():
@@ -56,14 +63,14 @@ def escape_markdown(text):
 
 # Register User
 async def register_user(telegram_id, username):
-    db = await connect_db()
+    db = await get_db_connection()
     if not db:
         return None
 
     # Check if the user already exists
     result = await db.fetchrow("SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
     if result:
-        await db.close()
+        await DB_POOL.release(db)
         return result["referral_code"]  # Return existing referral code
 
     # If user does not exist, create a new record
@@ -72,13 +79,13 @@ async def register_user(telegram_id, username):
         "INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
         telegram_id, username, referral_code, 0
     )
-    await db.close()
+    await DB_POOL.release(db)
     return referral_code
 
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    db = await connect_db()
+    db = await get_db_connection()
     if not db:
         await message.answer("❌ Database error! Please try again later.")
         return
@@ -96,7 +103,7 @@ async def handle_start(message: Message):
             await db.execute("UPDATE users SET referrals = referrals + 1 WHERE telegram_id = $1", referrer["telegram_id"])
             await message.answer("✅ You joined using a referral link!")
 
-    await db.close()
+    await DB_POOL.release(db)
 
     buttons = [
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
@@ -139,13 +146,13 @@ async def handle_leaderboard(event: CallbackQuery):
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
 
-    db = await connect_db()
+    db = await get_db_connection()
     if not db:
         await event.answer("❌ Database error! Please try again later.", show_alert=True)
         return
 
     top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
-    await db.close()
+    await DB_POOL.release(db)
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, row in enumerate(top_users, start=1):
@@ -164,17 +171,22 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    from flask import Flask
-    import threading
 
+    # Flask for health check
     app = Flask(__name__)
 
     @app.route('/')
     def home():
         return "Bot is running!"
 
+    @app.route('/health')
+    def health_check():
+        return "Bot is healthy and running!", 200
+
     def run_flask():
         app.run(host='0.0.0.0', port=8080)
 
     threading.Thread(target=run_flask, daemon=True).start()
+
+    # Start bot
     asyncio.run(main())
