@@ -150,13 +150,11 @@ async def handle_leaderboard(event: CallbackQuery):
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
-        # Escape special characters in the username
+        # Escape special characters in the username only
         username = escape_markdown(user['username'])
         leaderboard_text += f"{i}. {username}: {user['referrals']} referrals\n"
 
-    # Ensure that all the special characters in the leaderboard_text are escaped
-    leaderboard_text = escape_markdown(leaderboard_text)
-
+    # No need to escape the whole leaderboard_text, only the usernames
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
 # Start the bot
