@@ -2,11 +2,12 @@ import logging
 import random
 import string
 import asyncio
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
-from motor.motor_asyncio import AsyncIOMotorClient  # MongoDB async driver
+from motor.motor_asyncio import AsyncIOMotorClient
 from flask import Flask
 import threading
 
@@ -19,17 +20,38 @@ BOT_USERNAME = "Loretta_Referrals_bot"
 ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
 # MongoDB Database Connection
-DATABASE_URL = "mongodb+srv://Henpachi:Henpachi@referralbot.nl4ibnf.mongodb.net/?retryWrites=true&w=majority&appName=Referralbot"
+MONGO_URI = os.getenv("MONGO_URI")  # Fetch Mongo URI from environment variable
+DATABASE_NAME = "loretta_bot"
+USERS_COLLECTION = "users"
 
 # Initialize bot and dispatcher
 session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# Connect to MongoDB
-client = AsyncIOMotorClient(DATABASE_URL)
-db = client["referralbot"]
-users_collection = db["users"]
+# MongoDB Client
+client = None
+db = None
+
+# Retry parameters for DB connection
+MAX_RETRIES = 5  # Maximum retry attempts
+RETRY_DELAY = 5  # Delay in seconds before retrying
+
+# Create MongoDB client
+async def create_db_client():
+    global client, db
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            client = AsyncIOMotorClient(MONGO_URI)
+            db = client[DATABASE_NAME]
+            logging.info("✅ Connected to MongoDB!")
+            return
+        except Exception as e:
+            retries += 1
+            logging.error(f"❌ Error connecting to MongoDB: {e}. Retrying {retries}/{MAX_RETRIES}...")
+            await asyncio.sleep(RETRY_DELAY)
+    logging.critical("❌ Failed to connect to MongoDB after multiple retries.")
 
 # Generate a Referral Code
 def generate_referral_code():
@@ -42,11 +64,15 @@ def escape_markdown(text):
 
 # Register User
 async def register_user(telegram_id, username):
-    user = await users_collection.find_one({"telegram_id": telegram_id})
+    # Access the MongoDB collection
+    collection = db[USERS_COLLECTION]
     
+    # Check if the user already exists
+    user = await collection.find_one({"telegram_id": telegram_id})
     if user:
         return user["referral_code"]  # Return existing referral code
-    
+
+    # If user does not exist, create a new record
     referral_code = generate_referral_code()
     new_user = {
         "telegram_id": telegram_id,
@@ -54,12 +80,14 @@ async def register_user(telegram_id, username):
         "referral_code": referral_code,
         "referrals": 0
     }
-    await users_collection.insert_one(new_user)
+    await collection.insert_one(new_user)
     return referral_code
 
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
+    await create_db_client()  # Ensure the DB connection is established
+    
     parts = message.text.split()
     telegram_id = message.from_user.id
     username = message.from_user.username or "Unknown"
@@ -68,9 +96,9 @@ async def handle_start(message: Message):
 
     if len(parts) > 1:
         referrer_code = parts[1]
-        referrer = await users_collection.find_one({"referral_code": referrer_code})
+        referrer = await db[USERS_COLLECTION].find_one({"referral_code": referrer_code})
         if referrer and referrer["telegram_id"] != telegram_id:
-            await users_collection.update_one(
+            await db[USERS_COLLECTION].update_one(
                 {"telegram_id": referrer["telegram_id"]},
                 {"$inc": {"referrals": 1}}
             )
@@ -117,11 +145,11 @@ async def handle_leaderboard(event: CallbackQuery):
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
 
-    top_users = await users_collection.find().sort("referrals", -1).limit(10).to_list(length=10)
+    top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
-        username = escape_markdown(user.get("username", "Unknown"))
+        username = escape_markdown(user['username'])
         leaderboard_text += f"{i}\. {username}: {user['referrals']} referrals\n"
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
