@@ -3,30 +3,27 @@ import random
 import string
 import asyncio
 import os
-import requests
-import time
-import threading
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
 from motor.motor_asyncio import AsyncIOMotorClient
 from flask import Flask
+import threading
+import re
 
 # Bot credentials
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
 GROUP_INVITE_LINK = "https://t.me/LorettaCryptoHub"
 WHATSAPP_GROUP_LINK = "https://www.whatsapp.com/channel/0029Vb4A3wBJ93waVodoVb3o"
+YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
-ADMIN_CHAT_IDS = {6315241288, 6375943693}
+ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
 # MongoDB Database Connection
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.getenv("MONGO_URI")  # Fetch Mongo URI from environment variable
 DATABASE_NAME = "referralbot"
 USERS_COLLECTION = "users"
-
-# Render URL for Keep-Alive
-RENDER_URL = "https://telegram-bot-71by.onrender.com/"
 
 # Initialize bot and dispatcher
 session = AiohttpSession()
@@ -60,19 +57,9 @@ async def create_db_client():
 # Check and Reconnect if MongoDB is Disconnected
 async def ensure_db_connection():
     global client, db
-    if client is None or db is None:
+    if client is None or db is None or client.server_info() is None:
         logging.warning("⚠️ MongoDB connection lost! Reconnecting...")
         await create_db_client()
-
-# Keep Render Alive by pinging it every 10 minutes
-def keep_render_alive():
-    while True:
-        try:
-            requests.get(RENDER_URL)
-            logging.info("✅ Pinged Render to keep bot alive")
-        except Exception as e:
-            logging.error(f"⚠️ Failed to ping Render: {e}")
-        time.sleep(600)  # Ping every 10 minutes
 
 # Generate a Referral Code
 def generate_referral_code():
@@ -80,7 +67,7 @@ def generate_referral_code():
 
 # Register User
 async def register_user(telegram_id, username):
-    await ensure_db_connection()
+    await ensure_db_connection()  # Ensure database is active before accessing
     collection = db[USERS_COLLECTION]
     user = await collection.find_one({"telegram_id": telegram_id})
     if user:
@@ -149,6 +136,7 @@ async def handle_leaderboard(event: CallbackQuery):
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
     top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
+    logging.info(f"Fetched top users: {top_users}")
     if top_users:
         leaderboard_lines = ["<b>Referral Leaderboard</b>\n"]
         for i, user in enumerate(top_users, start=1):
@@ -159,6 +147,7 @@ async def handle_leaderboard(event: CallbackQuery):
     else:
         leaderboard_text = "No referrals yet!"
     leaderboard_text = f"<pre>{leaderboard_text}</pre>"
+    logging.info(f"Leaderboard text to send: {leaderboard_text}")
     await event.message.answer(leaderboard_text, parse_mode="HTML")
 
 # Start the bot
@@ -189,9 +178,6 @@ if __name__ == "__main__":
     
     # Start Flask in a separate thread
     threading.Thread(target=run_flask, daemon=True).start()
-
-    # Start Keep-Alive Ping in a Separate Thread
-    threading.Thread(target=keep_render_alive, daemon=True).start()
     
     # Start bot
     asyncio.run(main())
