@@ -60,7 +60,7 @@ def generate_referral_code():
 
 # Escape MarkdownV2 Special Characters
 def escape_markdown_v2(text: str) -> str:
-    # List of MarkdownV2 special characters
+    # List of MarkdownV2 special characters, including the dot
     special_chars = r'[_*[]()~`>#+-=|{}.!\\]'
     
     # Use regular expression to escape the special characters
