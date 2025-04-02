@@ -3,3 +3,4 @@ aiogram
 asyncpg
 gunicorn
 flask
+motor
