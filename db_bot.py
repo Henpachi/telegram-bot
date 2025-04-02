@@ -150,11 +150,13 @@ async def handle_leaderboard(event: CallbackQuery):
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
-        # Escape special characters in the username only
+        # Escape special characters in the username
         username = escape_markdown(user['username'])
         leaderboard_text += f"{i}. {username}: {user['referrals']} referrals\n"
 
-    # No need to escape the whole leaderboard_text, only the usernames
+    # Ensure that all the special characters in the leaderboard_text are escaped
+    leaderboard_text = escape_markdown(leaderboard_text)
+
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
 # Start the bot
@@ -182,6 +184,7 @@ if __name__ == "__main__":
     def run_flask():
         app.run(host='0.0.0.0', port=8080)
 
+    # Start Flask in a separate thread to avoid conflicts with asyncio
     threading.Thread(target=run_flask, daemon=True).start()
 
     # Start bot
