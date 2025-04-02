@@ -153,14 +153,19 @@ async def handle_leaderboard(event: CallbackQuery):
     # Fetch top users from the correct collection in the referralbot database
     top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
 
+    # Log the fetched top users for debugging purposes
+    logging.info(f"Fetched top users: {top_users}")
+
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
         # Escape special characters in the username
-        username = escape_markdown_v2(user['username'])
-        leaderboard_text += f"{i}. {username}: {user['referrals']} referrals\n"
+        username = escape_markdown_v2(user.get('username', 'Unknown'))
+        leaderboard_text += f"{i}. {username}: {user.get('referrals', 0)} referrals\n"
 
     # Ensure that all the special characters in the leaderboard_text are escaped
     leaderboard_text = escape_markdown_v2(leaderboard_text)
+
+    logging.info(f"Leaderboard text to send: {leaderboard_text}")
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
