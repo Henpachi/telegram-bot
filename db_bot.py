@@ -1,5 +1,4 @@
 import logging
-import asyncpg
 import random
 import string
 import asyncio
@@ -7,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
-from asyncpg import create_pool
+from motor.motor_asyncio import AsyncIOMotorClient  # MongoDB async driver
 from flask import Flask
 import threading
 
@@ -19,43 +18,18 @@ YOUR_TELEGRAM_USERNAME = "LorettaGifts"
 BOT_USERNAME = "Loretta_Referrals_bot"
 ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
-# Supabase Database Connection
-DATABASE_URL = "postgresql://postgres:DEpTKHAnHspuSbnNgMxwCEuoXEtbBgTc@tramway.proxy.rlwy.net:55831/railway"
+# MongoDB Database Connection
+DATABASE_URL = "mongodb+srv://Henpachi:Henpachi@referralbot.nl4ibnf.mongodb.net/?retryWrites=true&w=majority&appName=Referralbot"
 
 # Initialize bot and dispatcher
 session = AiohttpSession()
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# Retry parameters for DB connection
-MAX_RETRIES = 5  # Maximum retry attempts
-RETRY_DELAY = 5  # Delay in seconds before retrying
-DB_POOL = None
-
-# Create a connection pool to PostgreSQL
-async def create_db_pool():
-    global DB_POOL
-    retries = 0
-    while retries < MAX_RETRIES:
-        try:
-            DB_POOL = await create_pool(DATABASE_URL, min_size=5, max_size=20)
-            print("✅ Connected to PostgreSQL with pooling!")
-            return
-        except Exception as e:
-            retries += 1
-            logging.error(f"❌ Error creating DB pool: {e}. Retrying {retries}/{MAX_RETRIES}...")
-            await asyncio.sleep(RETRY_DELAY)
-    logging.critical("❌ Failed to connect to PostgreSQL after multiple retries.")
-
-# Get a connection from the pool
-async def get_db_connection():
-    if not DB_POOL:
-        await create_db_pool()
-    try:
-        return await DB_POOL.acquire()
-    except Exception as e:
-        logging.error(f"❌ Error acquiring DB connection: {e}")
-        return None
+# Connect to MongoDB
+client = AsyncIOMotorClient(DATABASE_URL)
+db = client["referralbot"]
+users_collection = db["users"]
 
 # Generate a Referral Code
 def generate_referral_code():
@@ -68,33 +42,24 @@ def escape_markdown(text):
 
 # Register User
 async def register_user(telegram_id, username):
-    db = await get_db_connection()
-    if not db:
-        return None
-
-    # Check if the user already exists
-    result = await db.fetchrow("SELECT referral_code FROM users WHERE telegram_id = $1", telegram_id)
-    if result:
-        await DB_POOL.release(db)
-        return result["referral_code"]  # Return existing referral code
-
-    # If user does not exist, create a new record
+    user = await users_collection.find_one({"telegram_id": telegram_id})
+    
+    if user:
+        return user["referral_code"]  # Return existing referral code
+    
     referral_code = generate_referral_code()
-    await db.execute(
-        "INSERT INTO users (telegram_id, username, referral_code, referrals) VALUES ($1, $2, $3, $4)",
-        telegram_id, username, referral_code, 0
-    )
-    await DB_POOL.release(db)
+    new_user = {
+        "telegram_id": telegram_id,
+        "username": username,
+        "referral_code": referral_code,
+        "referrals": 0
+    }
+    await users_collection.insert_one(new_user)
     return referral_code
 
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    db = await get_db_connection()
-    if not db:
-        await message.answer("❌ Database error! Please try again later.")
-        return
-
     parts = message.text.split()
     telegram_id = message.from_user.id
     username = message.from_user.username or "Unknown"
@@ -103,12 +68,13 @@ async def handle_start(message: Message):
 
     if len(parts) > 1:
         referrer_code = parts[1]
-        referrer = await db.fetchrow("SELECT telegram_id FROM users WHERE referral_code = $1", referrer_code)
+        referrer = await users_collection.find_one({"referral_code": referrer_code})
         if referrer and referrer["telegram_id"] != telegram_id:
-            await db.execute("UPDATE users SET referrals = referrals + 1 WHERE telegram_id = $1", referrer["telegram_id"])
+            await users_collection.update_one(
+                {"telegram_id": referrer["telegram_id"]},
+                {"$inc": {"referrals": 1}}
+            )
             await message.answer("✅ You joined using a referral link!")
-
-    await DB_POOL.release(db)
 
     buttons = [
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
@@ -151,18 +117,12 @@ async def handle_leaderboard(event: CallbackQuery):
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
 
-    db = await get_db_connection()
-    if not db:
-        await event.answer("❌ Database error! Please try again later.", show_alert=True)
-        return
-
-    top_users = await db.fetch("SELECT username, referrals FROM users ORDER BY referrals DESC LIMIT 10")
-    await DB_POOL.release(db)
+    top_users = await users_collection.find().sort("referrals", -1).limit(10).to_list(length=10)
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
-    for i, row in enumerate(top_users, start=1):
-        username = escape_markdown(row['username'])
-        leaderboard_text += f"{i}\. {username}: {row['referrals']} referrals\n"
+    for i, user in enumerate(top_users, start=1):
+        username = escape_markdown(user.get("username", "Unknown"))
+        leaderboard_text += f"{i}\. {username}: {user['referrals']} referrals\n"
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
