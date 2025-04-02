@@ -1,6 +1,4 @@
-
 aiogram
-asyncpg
+motor
 gunicorn
 flask
-motor
