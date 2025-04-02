@@ -10,7 +10,6 @@ from aiogram.filters import Command
 from motor.motor_asyncio import AsyncIOMotorClient
 from flask import Flask
 import threading
-import re
 
 # Bot credentials
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
@@ -58,26 +57,18 @@ async def create_db_client():
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
-# Escape MarkdownV2 Special Characters
+# Escape MarkdownV2 Special Characters using manual iteration
 def escape_markdown_v2(text: str) -> str:
-    # List of MarkdownV2 special characters, including the dot
-    special_chars = r'[_*[]()~`>#+-=|{}.!\\]'
-    
-    # Use regular expression to escape the special characters
-    escaped_text = re.sub(r'([{}])'.format(special_chars), r'\\\1', text)
-    return escaped_text
+    reserved_chars = '_*[]()~`>#+-=|{}.!'
+    escaped = ''.join(['\\' + char if char in reserved_chars else char for char in text])
+    return escaped
 
 # Register User
 async def register_user(telegram_id, username):
-    # Access the MongoDB collection in the correct database
     collection = db[USERS_COLLECTION]
-    
-    # Check if the user already exists
     user = await collection.find_one({"telegram_id": telegram_id})
     if user:
-        return user["referral_code"]  # Return existing referral code
-
-    # If user does not exist, create a new record
+        return user["referral_code"]
     referral_code = generate_referral_code()
     new_user = {
         "telegram_id": telegram_id,
@@ -91,7 +82,7 @@ async def register_user(telegram_id, username):
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    await create_db_client()  # Ensure the DB connection is established
+    await create_db_client()
     
     parts = message.text.split()
     telegram_id = message.from_user.id
@@ -114,12 +105,9 @@ async def handle_start(message: Message):
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
     ]
-
     if telegram_id in ADMIN_CHAT_IDS:
         buttons.append([InlineKeyboardButton(text="View Leaderboard 🏆", callback_data="leaderboard")])
-
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-
     await message.answer("📢 Welcome! Use the buttons below:", reply_markup=keyboard)
 
 # Handle Referral Button Click
@@ -129,17 +117,14 @@ async def send_referral(event: CallbackQuery):
     username = event.from_user.username or "Unknown"
     referral_code = await register_user(telegram_id, username)
     referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
-
     buttons = InlineKeyboardMarkup(inline_keyboard=[ 
         [InlineKeyboardButton(text="Refer a Friend ✅", callback_data="referral")],
         [InlineKeyboardButton(text="Join Loretta Crypto Hub ✅", url=GROUP_INVITE_LINK)],
         [InlineKeyboardButton(text="Join Our Whatsapp Group ✅", url=WHATSAPP_GROUP_LINK)]
     ])
-
     text = (f"🔗 Here is your referral link: {referral_link}\n"
             f"🎉 Invite friends and earn rewards!\n\n"
             f"📢 Join our group: {GROUP_INVITE_LINK}")
-
     await event.answer()
     await event.message.edit_text(text, reply_markup=buttons)
 
@@ -149,24 +134,19 @@ async def handle_leaderboard(event: CallbackQuery):
     if event.from_user.id not in ADMIN_CHAT_IDS:
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
-
-    # Fetch top users from the correct collection in the referralbot database
     top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
-
-    # Log the fetched top users for debugging purposes
     logging.info(f"Fetched top users: {top_users}")
-
-    leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
-    for i, user in enumerate(top_users, start=1):
-        # Escape special characters in the username
-        username = escape_markdown_v2(user.get('username', 'Unknown'))
-        leaderboard_text += f"{i}. {username}: {user.get('referrals', 0)} referrals\n"
-
-    # Ensure that all the special characters in the leaderboard_text are escaped
-    leaderboard_text = escape_markdown_v2(leaderboard_text)
-
+    if top_users:
+        leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n"
+        for i, user in enumerate(top_users, start=1):
+            # Escape special characters in the username only
+            username = escape_markdown_v2(user.get('username', 'Unknown'))
+            leaderboard_text += f"{i}. {username}: {user.get('referrals', 0)} referrals\n"
+    else:
+        leaderboard_text = "🏆 No referrals yet!"
+    
     logging.info(f"Leaderboard text to send: {leaderboard_text}")
-
+    # Send the final message using MarkdownV2 formatting
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
 # Start the bot
@@ -182,19 +162,14 @@ if __name__ == "__main__":
 
     # Flask for health check
     app = Flask(__name__)
-
     @app.route('/')
     def home():
         return "Bot is running!"
-
     @app.route('/health')
     def health_check():
         return "Bot is healthy and running!", 200
-
     def run_flask():
         app.run(host='0.0.0.0', port=8080)
-
-    # Start Flask in a separate thread to avoid conflicts with asyncio
     threading.Thread(target=run_flask, daemon=True).start()
 
     # Start bot
