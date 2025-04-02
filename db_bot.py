@@ -35,8 +35,8 @@ client = None
 db = None
 
 # Retry parameters for DB connection
-MAX_RETRIES = 5     # Maximum retry attempts
-RETRY_DELAY = 5     # Delay in seconds before retrying
+MAX_RETRIES = 5  # Maximum retry attempts
+RETRY_DELAY = 5  # Delay in seconds before retrying
 
 # Create MongoDB client
 async def create_db_client():
@@ -58,11 +58,11 @@ async def create_db_client():
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
-# Escape MarkdownV2 Special Characters for dynamic values only
-def escape_md(text: str) -> str:
-    # Characters reserved in MarkdownV2 that need escaping:
-    reserved = r'\_*[]()~`>#+-=|{}.!'
-    return ''.join(f'\\{char}' if char in reserved else char for char in text)
+# Escape MarkdownV2 Special Characters (for dynamic values only)
+def escape_markdown_v2(text: str) -> str:
+    # Reserved characters in MarkdownV2
+    reserved_chars = r'\_*[]()~`>#+-=|{}.!'
+    return ''.join(f'\\{char}' if char in reserved_chars else char for char in text)
 
 # Register User
 async def register_user(telegram_id, username):
@@ -83,7 +83,7 @@ async def register_user(telegram_id, username):
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    await create_db_client()  # Ensure the DB connection is established
+    await create_db_client()
     parts = message.text.split()
     telegram_id = message.from_user.id
     username = message.from_user.username or "Unknown"
@@ -136,9 +136,9 @@ async def handle_leaderboard(event: CallbackQuery):
     if top_users:
         leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n"
         for i, user in enumerate(top_users, start=1):
-            # Escape only the dynamic values
-            safe_username = escape_md(user.get('username', 'Unknown'))
-            safe_referrals = escape_md(str(user.get('referrals', 0)))
+            # Escape only dynamic values
+            safe_username = escape_markdown_v2(user.get('username', 'Unknown'))
+            safe_referrals = escape_markdown_v2(str(user.get('referrals', 0)))
             leaderboard_text += f"{i}. {safe_username}: {safe_referrals} referrals\n"
     else:
         leaderboard_text = "🏆 No referrals yet!"
@@ -155,23 +155,23 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-
+    
     # Flask for health check
     app = Flask(__name__)
-
+    
     @app.route('/')
     def home():
         return "Bot is running!"
-
+    
     @app.route('/health')
     def health_check():
         return "Bot is healthy and running!", 200
-
+    
     def run_flask():
         app.run(host='0.0.0.0', port=8080)
-
-    # Run Flask in a separate thread to avoid conflicts with asyncio
+    
+    # Start Flask in a separate thread
     threading.Thread(target=run_flask, daemon=True).start()
-
+    
     # Start bot
     asyncio.run(main())
