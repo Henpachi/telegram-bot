@@ -22,8 +22,8 @@ ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
 # MongoDB Database Connection
 MONGO_URI = os.getenv("MONGO_URI")  # Fetch Mongo URI from environment variable
-DATABASE_NAME = "referralbot"         # The database name is referralbot
-USERS_COLLECTION = "users"            # Collection name is users
+DATABASE_NAME = "referralbot"
+USERS_COLLECTION = "users"
 
 # Initialize bot and dispatcher
 session = AiohttpSession()
@@ -35,8 +35,8 @@ client = None
 db = None
 
 # Retry parameters for DB connection
-MAX_RETRIES = 5  # Maximum retry attempts
-RETRY_DELAY = 5  # Delay in seconds before retrying
+MAX_RETRIES = 5
+RETRY_DELAY = 5
 
 # Create MongoDB client
 async def create_db_client():
@@ -54,17 +54,20 @@ async def create_db_client():
             await asyncio.sleep(RETRY_DELAY)
     logging.critical("❌ Failed to connect to MongoDB after multiple retries.")
 
+# Check and Reconnect if MongoDB is Disconnected
+async def ensure_db_connection():
+    global client, db
+    if client is None or db is None or client.server_info() is None:
+        logging.warning("⚠️ MongoDB connection lost! Reconnecting...")
+        await create_db_client()
+
 # Generate a Referral Code
 def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
-# (Optional) A simple escape function for dynamic values (if needed)
-def escape_md(text: str) -> str:
-    reserved = r'\_*[]()~`>#+-=|{}.!'
-    return ''.join(f'\\{char}' if char in reserved else char for char in text)
-
 # Register User
 async def register_user(telegram_id, username):
+    await ensure_db_connection()  # Ensure database is active before accessing
     collection = db[USERS_COLLECTION]
     user = await collection.find_one({"telegram_id": telegram_id})
     if user:
@@ -82,7 +85,7 @@ async def register_user(telegram_id, username):
 # Handle /start Command
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    await create_db_client()
+    await ensure_db_connection()
     parts = message.text.split()
     telegram_id = message.from_user.id
     username = message.from_user.username or "Unknown"
@@ -109,6 +112,7 @@ async def handle_start(message: Message):
 # Handle Referral Button Click
 @dp.callback_query(F.data == "referral")
 async def send_referral(event: CallbackQuery):
+    await ensure_db_connection()
     telegram_id = event.from_user.id
     username = event.from_user.username or "Unknown"
     referral_code = await register_user(telegram_id, username)
@@ -124,27 +128,24 @@ async def send_referral(event: CallbackQuery):
     await event.answer()
     await event.message.edit_text(text, reply_markup=buttons)
 
-# Handle /leaderboard Command using HTML with a <pre> block to disable formatting
+# Handle /leaderboard Command
 @dp.callback_query(F.data == "leaderboard")
 async def handle_leaderboard(event: CallbackQuery):
+    await ensure_db_connection()
     if event.from_user.id not in ADMIN_CHAT_IDS:
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
     top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
     logging.info(f"Fetched top users: {top_users}")
     if top_users:
-        # Build leaderboard text using a static header and dynamic lines.
-        # Wrap the entire text in <pre> tags to prevent Telegram from parsing reserved characters.
         leaderboard_lines = ["<b>Referral Leaderboard</b>\n"]
         for i, user in enumerate(top_users, start=1):
-            # Escape dynamic values using html.escape (if needed)
             username = user.get('username', 'Unknown')
             referrals = str(user.get('referrals', 0))
             leaderboard_lines.append(f"{i}. {username}: {referrals} referrals")
         leaderboard_text = "\n".join(leaderboard_lines)
     else:
         leaderboard_text = "No referrals yet!"
-    # Wrap in <pre> tags to disable formatting
     leaderboard_text = f"<pre>{leaderboard_text}</pre>"
     logging.info(f"Leaderboard text to send: {leaderboard_text}")
     await event.message.answer(leaderboard_text, parse_mode="HTML")
@@ -152,6 +153,7 @@ async def handle_leaderboard(event: CallbackQuery):
 # Start the bot
 async def main():
     print("🤖 Bot is running...")
+    await create_db_client()
     try:
         await dp.start_polling(bot)
     finally:
