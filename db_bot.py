@@ -21,8 +21,8 @@ ADMIN_CHAT_IDS = {6315241288, 6375943693}  # Admin chat IDs
 
 # MongoDB Database Connection
 MONGO_URI = os.getenv("MONGO_URI")  # Fetch Mongo URI from environment variable
-DATABASE_NAME = "loretta_bot"
-USERS_COLLECTION = "users"
+DATABASE_NAME = "referralbot"  # The database name is referralbot
+USERS_COLLECTION = "users"  # Collection name is users
 
 # Initialize bot and dispatcher
 session = AiohttpSession()
@@ -64,7 +64,7 @@ def escape_markdown(text):
 
 # Register User
 async def register_user(telegram_id, username):
-    # Access the MongoDB collection
+    # Access the MongoDB collection in the correct database
     collection = db[USERS_COLLECTION]
     
     # Check if the user already exists
@@ -145,12 +145,13 @@ async def handle_leaderboard(event: CallbackQuery):
         await event.answer("❌ You are not authorized to view the leaderboard.", show_alert=True)
         return
 
+    # Fetch top users from the correct collection in the referralbot database
     top_users = await db[USERS_COLLECTION].find().sort("referrals", -1).limit(10).to_list(length=10)
 
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
         username = escape_markdown(user['username'])
-        leaderboard_text += f"{i}\. {username}: {user['referrals']} referrals\n"
+        leaderboard_text += f"{i}. {username}: {user['referrals']} referrals\n"
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
