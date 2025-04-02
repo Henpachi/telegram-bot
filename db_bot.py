@@ -10,6 +10,7 @@ from aiogram.filters import Command
 from motor.motor_asyncio import AsyncIOMotorClient
 from flask import Flask
 import threading
+import re
 
 # Bot credentials
 API_TOKEN = "7431196503:AAEuMgD4NQMn96VJNL70snlb_vvWBso5idE"
@@ -58,9 +59,13 @@ def generate_referral_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
 # Escape MarkdownV2 Special Characters
-def escape_markdown(text):
-    special_chars = "_`*[]()~>#+-=|{}.!"
-    return ''.join(f'\\{char}' if char in special_chars else char for char in text)
+def escape_markdown_v2(text: str) -> str:
+    # List of MarkdownV2 special characters
+    special_chars = r'[_*[]()~`>#+-=|{}.!\\]'
+    
+    # Use regular expression to escape the special characters
+    escaped_text = re.sub(r'([{}])'.format(special_chars), r'\\\1', text)
+    return escaped_text
 
 # Register User
 async def register_user(telegram_id, username):
@@ -151,11 +156,11 @@ async def handle_leaderboard(event: CallbackQuery):
     leaderboard_text = "🏆 *Referral Leaderboard* 🏆\n\n" if top_users else "🏆 No referrals yet!"
     for i, user in enumerate(top_users, start=1):
         # Escape special characters in the username
-        username = escape_markdown(user['username'])
+        username = escape_markdown_v2(user['username'])
         leaderboard_text += f"{i}. {username}: {user['referrals']} referrals\n"
 
     # Ensure that all the special characters in the leaderboard_text are escaped
-    leaderboard_text = escape_markdown(leaderboard_text)
+    leaderboard_text = escape_markdown_v2(leaderboard_text)
 
     await event.message.answer(leaderboard_text, parse_mode="MarkdownV2")
 
